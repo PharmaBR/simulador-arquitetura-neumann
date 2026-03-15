@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arquitetura Von Neumann</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --bg: #070d14;
+    --panel: #0b1622;
+    --border: #1a3a5c;
+    --cpu-color: #00d4ff;
+    --mem-color: #00ff9f;
+    --io-color: #ff6b35;
+    --bus-color: #ffd700;
+    --uc-color: #a78bfa;
+    --alu-color: #f472b6;
+    --reg-color: #38bdf8;
+    --cache-color: #4ade80;
+    --text: #c8e6ff;
+    --dim: #4a7fa5;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    text-align: center;
+    padding: 32px 20px 20px;
+    position: relative;
+    z-index: 1;
+  }
+
+  header h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(18px, 4vw, 32px);
+    font-weight: 900;
+    letter-spacing: 4px;
+    color: var(--cpu-color);
+    text-shadow: 0 0 30px rgba(0,212,255,0.6);
+    text-transform: uppercase;
+  }
+
+  header p {
+    color: var(--dim);
+    font-size: 12px;
+    letter-spacing: 2px;
+    margin-top: 6px;
+  }
+
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    padding: 10px 20px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--dim);
+  }
+
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+
+  /* Main diagram */
+  .diagram {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 20px auto;
+    padding: 0 16px 40px;
+  }
+
+  /* ---- BLOCKS ---- */
+  .block {
+    border: 1px solid;
+    border-radius: 6px;
+    padding: 12px 16px;
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .block:hover { transform: translateY(-2px); }
+
+  .block-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .block-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(13px, 2.5vw, 18px);
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .block-desc {
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  /* CPU wrapper */
+  .cpu-wrapper {
+    border: 2px solid var(--cpu-color);
+    border-radius: 10px;
+    padding: 16px;
+    background: rgba(0,212,255,0.03);
+    box-shadow: 0 0 40px rgba(0,212,255,0.08), inset 0 0 40px rgba(0,212,255,0.03);
+    position: relative;
+    margin-bottom: 0;
+  }
+
+  .cpu-wrapper::before {
+    content: 'CPU — UNIDADE CENTRAL DE PROCESSAMENTO';
+    position: absolute;
+    top: -12px;
+    left: 16px;
+    background: var(--bg);
+    padding: 0 8px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--cpu-color);
+  }
+
+  .cpu-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  /* UC */
+  .uc-block {
+    border-color: var(--uc-color);
+    background: rgba(167,139,250,0.05);
+    box-shadow: 0 0 20px rgba(167,139,250,0.1);
+  }
+  .uc-block .block-label { color: var(--uc-color); }
+  .uc-block .block-title { color: var(--uc-color); }
+
+  /* ALU */
+  .alu-block {
+    border-color: var(--alu-color);
+    background: rgba(244,114,182,0.05);
+    box-shadow: 0 0 20px rgba(244,114,182,0.1);
+  }
+  .alu-block .block-label { color: var(--alu-color); }
+  .alu-block .block-title { color: var(--alu-color); }
+
+  /* Registers */
+  .reg-section {
+    grid-column: 1 / -1;
+    border: 1px solid var(--reg-color);
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: rgba(56,189,248,0.04);
+  }
+
+  .reg-section-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--reg-color);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+  }
+
+  .registers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 8px;
+  }
+
+  .reg {
+    border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 4px;
+    padding: 6px 8px;
+    background: rgba(56,189,248,0.05);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+
+  .reg:hover {
+    border-color: var(--reg-color);
+    background: rgba(56,189,248,0.12);
+    box-shadow: 0 0 12px rgba(56,189,248,0.3);
+  }
+
+  .reg-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--reg-color);
+  }
+
+  .reg-full {
+    font-size: 9px;
+    color: var(--dim);
+    margin-top: 2px;
+    line-height: 1.3;
+  }
+
+  /* BUSES */
+  .bus-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    margin: 0;
+    position: relative;
+  }
+
+  .bus {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 2px;
+    font-weight: 700;
+    border-left: 1px solid;
+    border-right: 1px solid;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .bus::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    animation: busFlow 2.5s linear infinite;
+  }
+
+  .bus-data {
+    border-color: var(--bus-color);
+    background: rgba(255,215,0,0.08);
+    color: var(--bus-color);
+  }
+
+  .bus-addr {
+    border-color: var(--mem-color);
+    background: rgba(0,255,159,0.06);
+    color: var(--mem-color);
+    border-left: none; border-right: none;
+  }
+
+  .bus-ctrl {
+    border-color: var(--io-color);
+    background: rgba(255,107,53,0.06);
+    color: var(--io-color);
+  }
+
+  .bus-arrow-up, .bus-arrow-down {
+    width: 0; height: 0;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .bus-arrow-up {
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 8px solid var(--bus-color);
+    top: 0;
+  }
+
+  .bus-arrow-down {
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 8px solid var(--bus-color);
+    bottom: 0;
+  }
+
+  @keyframes busFlow {
+    0% { left: -60%; }
+    100% { left: 160%; }
+  }
+
+  /* Connector lines between bus and blocks */
+  .connector {
+    height: 24px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .connector-line {
+    border-left: 2px dashed;
+    border-right: 2px dashed;
+    opacity: 0.3;
+  }
+
+  .connector-line.data { border-color: var(--bus-color); }
+  .connector-line.addr { border-color: var(--mem-color); }
+  .connector-line.ctrl { border-color: var(--io-color); }
+
+  /* Bottom row: Memory + I/O */
+  .bottom-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* Memory */
+  .mem-block {
+    border-color: var(--mem-color);
+    background: rgba(0,255,159,0.04);
+    box-shadow: 0 0 20px rgba(0,255,159,0.08);
+  }
+  .mem-block .block-label { color: var(--mem-color); }
+  .mem-block .block-title { color: var(--mem-color); }
+
+  .mem-hierarchy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .mem-level {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+  }
+
+  .mem-bar {
+    height: 14px;
+    border-radius: 2px;
+    background: rgba(0,255,159,0.2);
+    border: 1px solid rgba(0,255,159,0.4);
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    font-size: 9px;
+    color: var(--mem-color);
+    white-space: nowrap;
+    letter-spacing: 1px;
+  }
+
+  .mem-bar.cache { width: 40%; background: rgba(0,255,159,0.35); }
+  .mem-bar.ram { width: 65%; }
+  .mem-bar.disk { width: 90%; background: rgba(0,255,159,0.1); }
+
+  .mem-speed {
+    font-size: 9px;
+    color: var(--dim);
+    white-space: nowrap;
+  }
+
+  /* I/O */
+  .io-block {
+    border-color: var(--io-color);
+    background: rgba(255,107,53,0.04);
+    box-shadow: 0 0 20px rgba(255,107,53,0.08);
+  }
+  .io-block .block-label { color: var(--io-color); }
+  .io-block .block-title { color: var(--io-color); }
+
+  .io-devices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .io-device {
+    border: 1px solid rgba(255,107,53,0.25);
+    border-radius: 4px;
+    padding: 5px 7px;
+    font-size: 10px;
+    color: rgba(255,107,53,0.8);
+    text-align: center;
+    background: rgba(255,107,53,0.05);
+  }
+
+  /* Fetch-Decode-Execute cycle panel */
+  .cycle-panel {
+    max-width: 900px;
+    margin: 24px auto 0;
+    padding: 0 16px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .cycle-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    text-align: center;
+  }
+
+  .cycle-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: wrap;
+  }
+
+  .cycle-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .cycle-num {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 16px;
+    transition: all 0.3s;
+    position: relative;
+  }
+
+  .cycle-step:hover .cycle-num {
+    transform: scale(1.15);
+  }
+
+  .cycle-step.fetch .cycle-num { border-color: var(--reg-color); color: var(--reg-color); }
+  .cycle-step.decode .cycle-num { border-color: var(--uc-color); color: var(--uc-color); }
+  .cycle-step.execute .cycle-num { border-color: var(--alu-color); color: var(--alu-color); }
+
+  .cycle-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .cycle-step.fetch .cycle-name { color: var(--reg-color); }
+  .cycle-step.decode .cycle-name { color: var(--uc-color); }
+  .cycle-step.execute .cycle-name { color: var(--alu-color); }
+
+  .cycle-arrow {
+    font-size: 20px;
+    color: var(--dim);
+    margin: 0 8px;
+    padding-bottom: 24px;
+  }
+
+  .cycle-loop {
+    font-size: 18px;
+    color: var(--dim);
+    margin: 0 8px;
+    padding-bottom: 24px;
+  }
+
+  /* Tooltip / info panel */
+  .info-panel {
+    max-width: 900px;
+    margin: 16px auto 0;
+    padding: 0 16px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .info-box {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px;
+    background: var(--panel);
+    min-height: 64px;
+    transition: all 0.3s;
+  }
+
+  .info-box.active {
+    border-color: var(--cpu-color);
+    box-shadow: 0 0 20px rgba(0,212,255,0.1);
+  }
+
+  .info-box-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+
+  .info-box-text {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--dim);
+  }
+
+  /* Pulse animation for active elements */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .pulse { animation: pulse 2s ease-in-out infinite; }
+
+  /* RISC vs CISC */
+  .comparison {
+    max-width: 900px;
+    margin: 20px auto 0;
+    padding: 0 16px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .comp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .comp-card {
+    border-radius: 6px;
+    padding: 14px;
+    border: 1px solid;
+  }
+
+  .comp-card.risc {
+    border-color: var(--cpu-color);
+    background: rgba(0,212,255,0.04);
+  }
+
+  .comp-card.cisc {
+    border-color: var(--alu-color);
+    background: rgba(244,114,182,0.04);
+  }
+
+  .comp-card-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+
+  .comp-card.risc .comp-card-title { color: var(--cpu-color); }
+  .comp-card.cisc .comp-card-title { color: var(--alu-color); }
+
+  .comp-item {
+    font-size: 11px;
+    color: var(--dim);
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    display: flex;
+    gap: 6px;
+  }
+
+  .comp-item::before { content: '›'; color: var(--bus-color); }
+
+  footer {
+    text-align: center;
+    padding: 32px 16px 24px;
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 2px;
+    position: relative;
+    z-index: 1;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Arquitetura Von Neumann</h1>
+  <p>SIMULAÇÃO E ANÁLISE — COMPUTER ARCHITECTURE AND ORGANIZATION — UniFECAF</p>
+</header>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--cpu-color)"></div>CPU</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--uc-color)"></div>Unidade de Controle</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--alu-color)"></div>ALU</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--reg-color)"></div>Registradores</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--mem-color)"></div>Memória</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--io-color)"></div>E/S</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--bus-color)"></div>Barramentos</div>
+</div>
+
+<!-- Main diagram -->
+<div class="diagram">
+
+  <!-- CPU -->
+  <div class="cpu-wrapper">
+    <div class="cpu-inner">
+
+      <!-- UC -->
+      <div class="block uc-block" onclick="showInfo('uc')">
+        <div class="block-label">Unidade de Controle</div>
+        <div class="block-title">UC</div>
+        <div class="block-desc">Busca, decodifica e coordena a execução das instruções. Gera sinais de controle para todos os componentes.</div>
+      </div>
+
+      <!-- ALU -->
+      <div class="block alu-block" onclick="showInfo('alu')">
+        <div class="block-label">Unidade Lógica e Aritmética</div>
+        <div class="block-title">ALU</div>
+        <div class="block-desc">Executa operações aritméticas (+, −, ×, ÷) e lógicas (AND, OR, NOT, XOR, comparações).</div>
+      </div>
+
+      <!-- Registers -->
+      <div class="reg-section" onclick="showInfo('reg')">
+        <div class="reg-section-title">▸ Registradores — memória interna da CPU (acesso em 1 ciclo)</div>
+        <div class="registers">
+          <div class="reg" onclick="event.stopPropagation(); showInfo('pc')">
+            <div class="reg-name">PC</div>
+            <div class="reg-full">Program Counter</div>
+          </div>
+          <div class="reg" onclick="event.stopPropagation(); showInfo('ir')">
+            <div class="reg-name">IR</div>
+            <div class="reg-full">Instruction Register</div>
+          </div>
+          <div class="reg" onclick="event.stopPropagation(); showInfo('mar')">
+            <div class="reg-name">MAR</div>
+            <div class="reg-full">Memory Address Reg.</div>
+          </div>
+          <div class="reg" onclick="event.stopPropagation(); showInfo('mdr')">
+            <div class="reg-name">MDR</div>
+            <div class="reg-full">Memory Data Reg.</div>
+          </div>
+          <div class="reg" onclick="event.stopPropagation(); showInfo('acc')">
+            <div class="reg-name">ACC</div>
+            <div class="reg-full">Acumulador</div>
+          </div>
+          <div class="reg" onclick="event.stopPropagation(); showInfo('gpr')">
+            <div class="reg-name">R0–Rn</div>
+            <div class="reg-full">Uso Geral</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Connector CPU → Bus -->
+  <div class="connector">
+    <div class="connector-line data"></div>
+    <div class="connector-line addr"></div>
+    <div class="connector-line ctrl"></div>
+  </div>
+
+  <!-- Buses -->
+  <div class="bus-row">
+    <div class="bus bus-data" onclick="showInfo('bus-data')">
+      <div class="bus-arrow-up" style="border-bottom-color:var(--bus-color)"></div>
+      ▶ BARRAMENTO DE DADOS ◀
+      <div class="bus-arrow-down" style="border-top-color:var(--bus-color)"></div>
+    </div>
+    <div class="bus bus-addr" onclick="showInfo('bus-addr')">
+      <div class="bus-arrow-up" style="border-bottom-color:var(--mem-color)"></div>
+      ▶ BARRAMENTO DE ENDEREÇOS ▶
+      <div class="bus-arrow-down" style="border-top-color:var(--mem-color); display:none"></div>
+    </div>
+    <div class="bus bus-ctrl" onclick="showInfo('bus-ctrl')">
+      <div class="bus-arrow-up" style="border-bottom-color:var(--io-color)"></div>
+      ▶ BARRAMENTO DE CONTROLE ◀
+      <div class="bus-arrow-down" style="border-top-color:var(--io-color)"></div>
+    </div>
+  </div>
+
+  <!-- Connector Bus → Memory/IO -->
+  <div class="connector">
+    <div class="connector-line data"></div>
+    <div class="connector-line addr"></div>
+    <div class="connector-line ctrl"></div>
+  </div>
+
+  <!-- Memory + I/O -->
+  <div class="bottom-row">
+
+    <!-- Memory -->
+    <div class="block mem-block" onclick="showInfo('mem')">
+      <div class="block-label">Hierarquia de Memória</div>
+      <div class="block-title">MEMÓRIA</div>
+      <div class="mem-hierarchy">
+        <div class="mem-level">
+          <div class="mem-bar cache">Cache L1/L2/L3</div>
+          <div class="mem-speed">~1–10 ns</div>
+        </div>
+        <div class="mem-level">
+          <div class="mem-bar ram">RAM (Memória Principal)</div>
+          <div class="mem-speed">~50–100 ns</div>
+        </div>
+        <div class="mem-level">
+          <div class="mem-bar disk">Disco (SSD / HD)</div>
+          <div class="mem-speed">~0.1–10 ms</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- I/O -->
+    <div class="block io-block" onclick="showInfo('io')">
+      <div class="block-label">Dispositivos de Entrada e Saída</div>
+      <div class="block-title">E/S</div>
+      <div class="io-devices">
+        <div class="io-device">⌨ Teclado</div>
+        <div class="io-device">🖥 Monitor</div>
+        <div class="io-device">🖱 Mouse</div>
+        <div class="io-device">💾 Disco</div>
+        <div class="io-device">🖨 Impressora</div>
+        <div class="io-device">📡 Rede</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Fetch-Decode-Execute Cycle -->
+<div class="cycle-panel">
+  <div class="cycle-title">▸ Ciclo de Máquina (Fetch → Decode → Execute)</div>
+  <div class="cycle-steps">
+    <div class="cycle-step fetch" onclick="showInfo('fetch')">
+      <div class="cycle-num">1</div>
+      <div class="cycle-name">FETCH</div>
+    </div>
+    <div class="cycle-arrow">→</div>
+    <div class="cycle-step decode" onclick="showInfo('decode')">
+      <div class="cycle-num">2</div>
+      <div class="cycle-name">DECODE</div>
+    </div>
+    <div class="cycle-arrow">→</div>
+    <div class="cycle-step execute" onclick="showInfo('execute')">
+      <div class="cycle-num">3</div>
+      <div class="cycle-name">EXECUTE</div>
+    </div>
+    <div class="cycle-loop">↺</div>
+  </div>
+</div>
+
+<!-- Info box -->
+<div class="info-panel">
+  <div class="info-box" id="info-box">
+    <div class="info-box-title" id="info-title" style="color:var(--dim)">▸ INFORMAÇÕES</div>
+    <div class="info-box-text" id="info-text">Clique em qualquer componente do diagrama para ver uma explicação detalhada.</div>
+  </div>
+</div>
+
+<!-- RISC vs CISC -->
+<div class="comparison">
+  <div class="cycle-title" style="margin-bottom:12px">▸ RISC vs. CISC</div>
+  <div class="comp-grid">
+    <div class="comp-card risc">
+      <div class="comp-card-title">RISC</div>
+      <div class="comp-item">Instruções simples e uniformes</div>
+      <div class="comp-item">1 instrução por ciclo de clock</div>
+      <div class="comp-item">Muitos registradores de uso geral</div>
+      <div class="comp-item">Hardware simples, compilador complexo</div>
+      <div class="comp-item">Exemplos: ARM, RISC-V, MIPS</div>
+      <div class="comp-item">Usado em smartphones e embarcados</div>
+    </div>
+    <div class="comp-card cisc">
+      <div class="comp-card-title">CISC</div>
+      <div class="comp-item">Instruções complexas e variadas</div>
+      <div class="comp-item">Múltiplos ciclos por instrução</div>
+      <div class="comp-item">Menos registradores, mais modos</div>
+      <div class="comp-item">Hardware complexo, compilador simples</div>
+      <div class="comp-item">Exemplos: x86, x86-64 (Intel, AMD)</div>
+      <div class="comp-item">Usado em PCs e servidores</div>
+    </div>
+  </div>
+</div>
+
+<footer>UNIFECAF · COMPUTER ARCHITECTURE AND ORGANIZATION · DIAGRAMA INTERATIVO · CLIQUE NOS COMPONENTES</footer>
+
+<script>
+const info = {
+  uc: {
+    title: 'UC — UNIDADE DE CONTROLE',
+    color: 'var(--uc-color)',
+    text: 'A Unidade de Controle (UC) é o "maestro" da CPU. Ela busca instruções na memória via PC, decodifica o opcode e gera sinais elétricos que ativam a ALU, registradores e barramentos na sequência correta. Sem a UC, nenhum componente sabe o que fazer.'
+  },
+  alu: {
+    title: 'ALU — UNIDADE LÓGICA E ARITMÉTICA',
+    color: 'var(--alu-color)',
+    text: 'A ALU executa todas as operações computacionais: adição, subtração, multiplicação, divisão, AND, OR, NOT, XOR e comparações (maior, menor, igual). Ela recebe operandos dos registradores, opera e devolve o resultado ao Acumulador (ACC) ou a um registrador de uso geral.'
+  },
+  reg: {
+    title: 'REGISTRADORES',
+    color: 'var(--reg-color)',
+    text: 'Registradores são pequenas memórias dentro da própria CPU, acessadas em 1 ciclo de clock. São a parte mais rápida da hierarquia de memória. Existem registradores de propósito específico (PC, IR, MAR, MDR, ACC) e de uso geral (R0–Rn), usados para armazenar operandos temporários.'
+  },
+  pc: {
+    title: 'PC — PROGRAM COUNTER',
+    color: 'var(--reg-color)',
+    text: 'O Program Counter guarda o endereço de memória da próxima instrução a ser executada. Após cada busca (fetch), ele é incrementado automaticamente. Em instruções de salto (jump/branch), a UC sobrescreve o PC com o endereço de destino.'
+  },
+  ir: {
+    title: 'IR — INSTRUCTION REGISTER',
+    color: 'var(--reg-color)',
+    text: 'O Instruction Register armazena a instrução que está sendo executada no momento. Após o fetch, a instrução é copiada da memória para o IR. A UC então lê o IR para decodificar o opcode (que operação?) e os operandos (quais dados?).'
+  },
+  mar: {
+    title: 'MAR — MEMORY ADDRESS REGISTER',
+    color: 'var(--reg-color)',
+    text: 'O MAR armazena o endereço de memória que será lido ou escrito na próxima operação. Ele é carregado pela UC antes de qualquer acesso à memória e seu valor é colocado no barramento de endereços.'
+  },
+  mdr: {
+    title: 'MDR — MEMORY DATA REGISTER',
+    color: 'var(--reg-color)',
+    text: 'O MDR funciona como buffer entre a CPU e a memória principal. Em uma leitura: a memória deposita o dado aqui. Em uma escrita: a CPU coloca o dado aqui antes de enviá-lo à memória. É o "portão" de entrada e saída de dados da CPU.'
+  },
+  acc: {
+    title: 'ACC — ACUMULADOR',
+    color: 'var(--reg-color)',
+    text: 'O Acumulador armazena o resultado das operações da ALU. Em arquiteturas mais simples (como na Von Neumann original), ele é o único registrador de dados visível ao programador. Em arquiteturas modernas, é um dos vários registradores de uso geral.'
+  },
+  gpr: {
+    title: 'R0–Rn — REGISTRADORES DE USO GERAL',
+    color: 'var(--reg-color)',
+    text: 'São registradores disponíveis ao programador e ao compilador para armazenar valores temporários, endereços e resultados intermediários. Arquiteturas RISC costumam ter 32 registradores de uso geral. Quanto mais registradores, menos acessos à memória (mais rápido).'
+  },
+  'bus-data': {
+    title: 'BARRAMENTO DE DADOS',
+    color: 'var(--bus-color)',
+    text: 'Transporta os dados entre CPU, memória e dispositivos de E/S. É bidirecional: os dados podem fluir em ambas as direções. A largura desse barramento (8, 16, 32, 64 bits) determina quantos bits são transferidos por vez.'
+  },
+  'bus-addr': {
+    title: 'BARRAMENTO DE ENDEREÇOS',
+    color: 'var(--mem-color)',
+    text: 'Transporta o endereço de memória que a CPU deseja acessar. É unidirecional (CPU → Memória). A largura desse barramento determina o espaço máximo de endereçamento: 32 bits = até 4 GB, 64 bits = muito mais.'
+  },
+  'bus-ctrl': {
+    title: 'BARRAMENTO DE CONTROLE',
+    color: 'var(--io-color)',
+    text: 'Transporta sinais de controle: leitura, escrita, clock, interrupções, reset, confirmação (ACK). É a "linha de comando" do sistema — ele coordena quem pode usar o barramento de dados em cada momento (arbitragem).'
+  },
+  mem: {
+    title: 'HIERARQUIA DE MEMÓRIA',
+    color: 'var(--mem-color)',
+    text: 'A memória é organizada em camadas por velocidade e custo. Cache (L1/L2/L3): dentro ou próximo à CPU, acesso em nanosegundos, cara e pequena. RAM: memória principal, dezenas de ns, volátil. Disco (SSD/HD): persistente, muito maior, mas ordens de grandeza mais lenta. O princípio da localidade faz a cache funcionar bem.'
+  },
+  io: {
+    title: 'DISPOSITIVOS DE ENTRADA E SAÍDA (E/S)',
+    color: 'var(--io-color)',
+    text: 'Dispositivos de E/S permitem que o computador se comunique com o mundo externo. Dispositivos de entrada (teclado, mouse) enviam dados à CPU. Dispositivos de saída (monitor, impressora) recebem dados da CPU. A comunicação é gerenciada por controladores e drivers, podendo usar interrupções (IRQ) ou polling.'
+  },
+  fetch: {
+    title: 'FASE 1 — FETCH (BUSCA)',
+    color: 'var(--reg-color)',
+    text: 'A UC copia o valor do PC para o MAR. O endereço vai pelo barramento de endereços até a memória. A memória retorna a instrução pelo barramento de dados, que é armazenada no MDR e depois no IR. Por fim, o PC é incrementado para apontar à próxima instrução.'
+  },
+  decode: {
+    title: 'FASE 2 — DECODE (DECODIFICAÇÃO)',
+    color: 'var(--uc-color)',
+    text: 'A UC lê o conteúdo do IR e interpreta o opcode (código da operação). Identifica que tipo de instrução é (aritmética, acesso à memória, salto) e quais operandos são necessários. Gera os sinais de controle para a próxima fase.'
+  },
+  execute: {
+    title: 'FASE 3 — EXECUTE (EXECUÇÃO)',
+    color: 'var(--alu-color)',
+    text: 'A instrução é executada. Se for uma operação aritmética/lógica, a ALU é acionada e o resultado vai ao ACC ou a um registrador. Se for acesso à memória, os dados são lidos/escritos via MAR e MDR. Se for um salto, o PC é sobrescrito com o novo endereço. O ciclo recomeça.'
+  }
+};
+
+function showInfo(key) {
+  const d = info[key];
+  if (!d) return;
+  const box = document.getElementById('info-box');
+  const title = document.getElementById('info-title');
+  const text = document.getElementById('info-text');
+  title.textContent = '▸ ' + d.title;
+  title.style.color = d.color;
+  text.textContent = d.text;
+  box.classList.add('active');
+  box.style.borderColor = d.color;
+  box.style.boxShadow = `0 0 20px ${d.color}22`;
+}
+</script>
+</body>
+</html>
